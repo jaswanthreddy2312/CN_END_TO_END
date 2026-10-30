@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CypherChat | End-to-End Encrypted Chat</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+</head>
+<body>
+
+    <!-- Top Application Header Bar -->
+    <header class="app-header">
+        <div class="brand-container">
+            <div class="brand-icon">🔒</div>
+            <div>
+                <span class="brand-title">CypherChat</span>
+                <span class="brand-badge">E2EE Ratchet Prototype • Forward Secrecy &amp; Message Authentication</span>
+            </div>
+        </div>
+
+        <div class="header-user-status" id="header-user-status">
+            <button id="header-workflow-btn" class="btn-header-workflow" title="Open Real-Time Cryptographic Workflow Visualizer">
+                🔬 Workflow Visualizer
+            </button>
+
+            <div class="user-profile-badge">
+                <span>User:</span>
+                <strong id="current-username-display">—</strong>
+            </div>
+
+            <div class="ws-indicator">
+                <span id="ws-status-dot" class="status-dot offline"></span>
+                <span id="ws-status-text">Disconnected</span>
+            </div>
+
+            <button id="logout-btn" class="btn-secondary" title="Sign out of your session">Logout</button>
+        </div>
+    </header>
+
+    <!-- 1. Authentication View (Login & Registration) -->
+    <main id="auth-view">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h2>Secure Login</h2>
+                <p>Academic Computer Networks Demonstration System</p>
+            </div>
+
+            <div class="auth-tabs">
+                <div id="tab-login" class="auth-tab active">Sign In</div>
+                <div id="tab-register" class="auth-tab">Create Account</div>
+            </div>
+
+            <!-- Login Form -->
+            <form id="form-login">
+                <div class="form-group">
+                    <label for="login-username">Username</label>
+                    <input type="text" id="login-username" required autocomplete="username" placeholder="e.g. alice">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn-primary">Sign In</button>
+            </form>
+
+            <!-- Registration Form -->
+            <form id="form-register" style="display: none;">
+                <div class="form-group">
+                    <label for="reg-username">Choose Username</label>
+                    <input type="text" id="reg-username" required autocomplete="username" placeholder="e.g. bob" minlength="3">
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Password (min 8 chars)</label>
+                    <input type="password" id="reg-password" required autocomplete="new-password" placeholder="••••••••" minlength="8">
+                </div>
+                <div class="form-group">
+                    <label for="reg-password-confirm">Confirm Password</label>
+                    <input type="password" id="reg-password-confirm" required autocomplete="new-password" placeholder="••••••••" minlength="8">
+                </div>
+                <button type="submit" class="btn-primary">Create Account &amp; Generate Keys</button>
+            </form>
+
+            <div id="auth-error-msg" class="auth-error"></div>
+
+            <div class="crypto-notice">
+                🛡️ <strong>Browser-Side Key Generation:</strong> ECDH P-256 identity and prekey pairs are generated in this browser profile. Private keys and session state are not sent in message envelopes. Passwords are hashed with Argon2id and login attempts are rate-limited.
+            </div>
+        </div>
+    </main>
+
+    <!-- 2. Main Chat View -->
+    <main id="chat-view" style="display: none;">
+        <!-- Left Sidebar: Contacts & Search -->
+        <aside class="chat-sidebar">
+            <div class="sidebar-search-box">
+                <div class="search-input-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="contact-search" placeholder="Search registered users...">
+                </div>
+            </div>
+
+            <div class="contacts-container" id="contacts-list">
+                <!-- Dynamically populated contacts -->
+            </div>
+        </aside>
+
+        <!-- Center Main Chat Window -->
+        <section class="chat-main">
+            <!-- Chat Active Header -->
+            <div class="chat-header-bar">
+                <div class="chat-partner-details">
+                    <button class="mobile-back-btn" id="mobile-back-btn" title="Back to contacts">←</button>
+                    <div>
+                        <div class="chat-partner-name" id="chat-partner-name">Select a conversation</div>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-top: 2px;">
+                            <span id="chat-partner-status" class="status-badge offline">
+                                <span class="status-dot offline"></span> Select contact
+                            </span>
+                            <span id="header-verify-badge" class="security-badge unverified">🔒 E2EE</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-header-actions">
+                    <button id="workflow-toggle-btn" class="btn-workflow-toggle" title="View Real-Time 7-Stage Cryptographic Workflow">
+                        🔬 Workflow Visualizer
+                    </button>
+                    <button id="tamper-toggle-btn" class="btn-tamper-demo" title="Toggle to simulate an active on-the-wire tampering attack on the next sent message">
+                        ⚠️ Simulate Tamper Attack
+                    </button>
+                    <button id="toggle-security-btn" class="btn-security-toggle">
+                        🛡️ Security Details
+                    </button>
+                </div>
+            </div>
+
+            <!-- Messages Stream -->
+            <div class="messages-container" id="messages-container">
+                <div class="chat-empty-notice">
+                    <div class="lock-icon-large">💬</div>
+                    <h3>Start a Confidential Conversation</h3>
+                    <p>Select a registered user to establish a browser-encrypted conversation relayed over WebSockets with AES-256-GCM message authentication and Double Ratchet forward secrecy.</p>
+                </div>
+            </div>
+
+            <!-- Active Tamper Demonstration Banner -->
+            <div id="tamper-banner" class="tamper-banner" style="display: none;">
+                <div class="tamper-banner-left">
+                    <span class="tamper-pulse-dot"></span>
+                    <div>
+                        <strong>⚠️ Tamper Attack Mode Active</strong>
+                        <p id="tamper-banner-desc">Next message will have modified bits injected before WebSocket transmission to test recipient authenticated decryption rejection.</p>
+                    </div>
+                </div>
+                <div class="tamper-banner-right">
+                    <label for="tamper-type-select">Corruption Target:</label>
+                    <select id="tamper-type-select" class="tamper-select">
+                        <option value="ciphertext">Corrupt Ciphertext Bits (Byte 0 XOR 0xFF)</option>
+                        <option value="tag">Corrupt AES-GCM Auth Tag (Tag Byte Flip)</option>
+                        <option value="iv">Corrupt Nonce / IV (Nonce Byte Flip)</option>
+                    </select>
+                    <button type="button" id="btn-cancel-tamper" class="btn-cancel-tamper">Disable Attack</button>
+                </div>
+            </div>
+
+            <!-- Message Input Area -->
+            <div class="chat-input-bar">
+                <div id="chat-error-msg" class="chat-error" role="alert"></div>
+                <form id="chat-form" class="chat-input-form">
+                    <input type="text" id="message-input" placeholder="Type an encrypted message..." autocomplete="off">
+                    <button type="submit" id="btn-send" class="btn-send">
+                        <span>Send</span>
+                        <span>🔒</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- 6. Real-Time Cryptographic Workflow Visualization Module -->
+            <aside class="workflow-panel" id="workflow-panel">
+                <div class="workflow-panel-header">
+                    <div class="workflow-title-wrap">
+                        <h3>🔬 Cryptographic Workflow Visualizer</h3>
+                        <span class="workflow-subtitle" id="workflow-current-target">Select or send a message to inspect live crypto</span>
+                    </div>
+                    <button id="close-workflow-btn" class="btn-close-panel" title="Close Visualizer">✕</button>
+                </div>
+
+                <div class="workflow-panel-body" id="workflow-panel-body">
+                    <div class="workflow-intro-note">
+                        <strong>Live Cryptographic Execution:</strong> The parameters below reflect actual values from the browser Web Crypto API and custom Double Ratchet execution on your device.
+                    </div>
+
+                    <div class="pipeline-container">
+                        <!-- Stage 1 -->
+                        <div class="pipeline-stage" id="wf-stage-1">
+                            <div class="stage-header">
+                                <span class="stage-num">1</span>
+                                <span class="stage-title">Original Plaintext</span>
+                                <span class="stage-badge badge-sender">Sender Side</span>
+                            </div>
+                            <div class="stage-body">
+                                <div class="stage-data-box" id="wf-s1-plaintext">// Awaiting message input</div>
+                                <div class="stage-meta" id="wf-s1-meta">UTF-8 Encoding • Plaintext exists solely in client memory before ciphering</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-connector"><span class="arrow-down">↓</span> <span class="connector-label">Web Crypto API Key Derivation &amp; Nonce Generation</span></div>
+
+                        <!-- Stage 2 -->
+                        <div class="pipeline-stage" id="wf-stage-2">
+                            <div class="stage-header">
+                                <span class="stage-num">2</span>
+                                <span class="stage-title">Sender-Side Encryption</span>
+                                <span class="stage-badge badge-crypto">Primitives</span>
+                            </div>
+                            <div class="stage-body">
+                                <ul class="spec-list pipeline-list">
+                                    <li><span class="spec-name">AEAD Cipher:</span> <span class="spec-val">AES-256-GCM (NIST SP 800-38D)</span></li>
+                                    <li><span class="spec-name">Symmetric KDF:</span> <span class="spec-val">HKDF-SHA-256 (RFC 5869)</span></li>
+                                    <li><span class="spec-name">Key Agreement:</span> <span class="spec-val">ECDH NIST P-256</span></li>
+                                    <li><span class="spec-name">Generated Nonce (IV):</span> <code id="wf-s2-nonce" class="mono-code">12-byte CSPRNG IV</code></li>
+                                    <li><span class="spec-name">Forward Secrecy:</span> <span class="badge-success">Ephemeral MK Derived &amp; Zeroized</span></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-connector"><span class="arrow-down">↓</span> <span class="connector-label">AES-GCM Authenticated Encryption</span></div>
+
+                        <!-- Stage 3 -->
+                        <div class="pipeline-stage" id="wf-stage-3">
+                            <div class="stage-header">
+                                <span class="stage-num">3</span>
+                                <span class="stage-title">Generated Ciphertext &amp; Encryption Metadata</span>
+                                <span class="stage-badge badge-payload">Envelope Ready</span>
+                            </div>
+                            <div class="stage-body">
+                                <div class="pipeline-kv-card">
+                                    <div class="kv-row"><span class="kv-key">Ciphertext (Base64):</span></div>
+                                    <pre class="stage-code-block" id="wf-s3-ciphertext">// Pending message send</pre>
+                                    <div class="kv-row"><span class="kv-key">Nonce / IV (12-byte Hex):</span></div>
+                                    <pre class="stage-code-block" id="wf-s3-nonce-hex">// Pending</pre>
+                                    <div class="kv-row"><span class="kv-key">AES-GCM Auth Tag (16-byte Hex):</span></div>
+                                    <pre class="stage-code-block tag-code" id="wf-s3-tag">// Pending</pre>
+                                    <div class="kv-meta-row">
+                                        <span>Msg Counter: <strong id="wf-s3-counter">—</strong></span>
+                                        <span>Ratchet: <strong id="wf-s3-ratchet-state">—</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-connector"><span class="arrow-down">↓</span> <span class="connector-label">Encrypted WebSocket Transmission (Zero Plaintext on Wire)</span></div>
+
+                        <!-- Stage 4 -->
+                        <div class="pipeline-stage" id="wf-stage-4">
+                            <div class="stage-header">
+                                <span class="stage-num">4</span>
+                                <span class="stage-title">Encrypted WebSocket Payload</span>
+                                <span class="stage-badge badge-wire">Network Envelope</span>
+                            </div>
+                            <div class="stage-body">
+                                <pre class="wire-code-block" id="wf-s4-payload">// No packet transmitted yet</pre>
+                                <div class="stage-meta">Server validates envelope schema and relays/queues. Backend NEVER inspects or possesses plaintext or private keys.</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-connector"><span class="arrow-down">↓</span> <span class="connector-label">Recipient WebSocket Reception &amp; Integrity Verification</span></div>
+
+                        <!-- Stage 5 -->
+                        <div class="pipeline-stage" id="wf-stage-5">
+                            <div class="stage-header">
+                                <span class="stage-num">5</span>
+                                <span class="stage-title">Recipient-Side Authentication Verification</span>
+                                <span class="stage-badge" id="wf-s5-badge">Integrity</span>
+                            </div>
+                            <div class="stage-body">
+                                <div class="verification-status-box" id="wf-s5-box">
+                                    <div id="wf-s5-tag-status">Awaiting message reception</div>
+                                    <div class="verif-subdetails" id="wf-s5-details">AES-256-GCM authenticated decryption verifies the 128-bit authentication tag before any plaintext is released.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-connector"><span class="arrow-down">↓</span> <span class="connector-label">Decryption Execution &amp; Key Purge</span></div>
+
+                        <!-- Stage 6 -->
+                        <div class="pipeline-stage" id="wf-stage-6">
+                            <div class="stage-header">
+                                <span class="stage-num">6</span>
+                                <span class="stage-title">Recipient-Side Decryption</span>
+                                <span class="stage-badge" id="wf-s6-badge">Decryption</span>
+                            </div>
+                            <div class="stage-body">
+                                <ul class="spec-list pipeline-list">
+                                    <li><span class="spec-name">Chain Advance:</span> <span id="wf-s6-chain-status">Receiving chain advanced via HKDF</span></li>
+                                    <li><span class="spec-name">Decryption Call:</span> <code>crypto.subtle.decrypt(AES-GCM, IV, CT)</code></li>
+                                    <li><span class="spec-name">Key Erasure:</span> <span class="badge-success">Message Key deleted immediately</span></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-connector"><span class="arrow-down">↓</span> <span class="connector-label">Plaintext Delivery</span></div>
+
+                        <!-- Stage 7 -->
+                        <div class="pipeline-stage" id="wf-stage-7">
+                            <div class="stage-header">
+                                <span class="stage-num">7</span>
+                                <span class="stage-title">Recovered Plaintext</span>
+                                <span class="stage-badge" id="wf-s7-badge">Result</span>
+                            </div>
+                            <div class="stage-body">
+                                <div class="stage-data-box" id="wf-s7-plaintext">// Awaiting decryption</div>
+                                <div class="stage-meta" id="wf-s7-meta">Decrypted string is rendered solely on recipient device.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Slide-out Security & Wire Inspector Panel -->
+            <div class="security-panel" id="security-panel">
+                <div class="security-panel-header">
+                    <h3>🛡️ Security &amp; Protocol Inspector</h3>
+                    <button id="close-security-btn" class="btn-close-panel" title="Close Panel">✕</button>
+                </div>
+
+                <div class="security-panel-body">
+                    <!-- Identity & Key Verification Card -->
+                    <div class="sec-card">
+                        <div class="sec-card-title">Identity &amp; Key Verification</div>
+                        <div class="academic-explainer" style="margin-bottom: 8px;">
+                            Signed identity keys and signed prekeys are verified before a contact is treated as trusted. A valid signature proves the prekey belongs to the claimed identity key, but users still need to confirm the safety number out-of-band to guard against MITM risk.
+                        </div>
+                        <ul class="spec-list">
+                            <li><span class="spec-name">Current contact:</span> <span id="identity-current-contact" class="spec-val">—</span></li>
+                            <li><span class="spec-name">Fingerprint:</span> <span id="identity-fingerprint-display" class="spec-val">—</span></li>
+                            <li><span class="spec-name">Signed prekey verification:</span> <span id="identity-key-verification-status" class="spec-val">—</span></li>
+                            <li><span class="spec-name">Verification state:</span> <span id="identity-contact-verification-state" class="spec-val">Unverified</span></li>
+                            <li><span class="spec-name">Identity change warning:</span> <span id="identity-key-change-warning" class="spec-val">No change detected</span></li>
+                        </ul>
+                    </div>
+
+                    <!-- Safety Number Card -->
+                    <div class="sec-card">
+                        <div class="sec-card-title">🔑 Identity Safety Number</div>
+                        <p class="academic-explainer" style="margin-bottom: 8px;">
+                            Compare this 30-digit fingerprint out-of-band with your contact to verify that no Man-In-The-Middle (MITM) has intercepted the key exchange.
+                        </p>
+                        <div id="safety-number-display" class="safety-number-block">
+                            Select a contact to view fingerprint
+                        </div>
+                        <label class="verify-toggle-label">
+                            <input type="checkbox" id="verify-identity-checkbox">
+                            <span>I have verified this safety number</span>
+                        </label>
+                    </div>
+
+                    <!-- Forward Secrecy & Ratchet Protocol Card -->
+                    <div class="sec-card">
+                        <div class="sec-card-title">🔄 Forward Secrecy &amp; Key Rotation</div>
+                        <ul class="spec-list">
+                            <li><span class="spec-name">Protocol:</span> <span class="spec-val">Double Ratchet (DH + Symmetric KDF)</span></li>
+                            <li><span class="spec-name">Ratchet Session:</span> <span id="ratchet-step-display" class="spec-val">—</span></li>
+                            <li><span class="spec-name">Message Counters:</span> <span id="ratchet-msg-count-display" class="spec-val">—</span></li>
+                            <li><span class="spec-name">Symmetric KDF:</span> <span class="spec-val">HKDF-SHA-256 One-Way Chain</span></li>
+                            <li><span class="spec-name">Message Key Erasure:</span> <span class="badge-success">Immediate (Purged after use)</span></li>
+                            <li><span class="spec-name">Asymmetric Ratchet:</span> <span class="spec-val">Fresh P-256 ECDH on reply turn</span></li>
+                        </ul>
+                        <p class="academic-explainer" style="margin-top: 8px;">
+                            <strong>Forward Secrecy Property:</strong> Each message key is used once and immediately destroyed. Because HKDF is one-way (pre-image resistant), compromising future keys cannot reveal past messages.
+                        </p>
+                    </div>
+
+                    <!-- Cryptographic Protocol Specs -->
+                    <div class="sec-card">
+                        <div class="sec-card-title">⚙️ Cryptographic Primitives</div>
+                        <ul class="spec-list">
+                            <li><span class="spec-name">Key Agreement:</span> <span class="spec-val">ECDH NIST P-256</span></li>
+                            <li><span class="spec-name">Key Derivation:</span> <span class="spec-val">HKDF-SHA-256</span></li>
+                            <li><span class="spec-name">AEAD Cipher:</span> <span class="spec-val">AES-256-GCM (128-bit Tag)</span></li>
+                            <li><span class="spec-name">Password Hashing:</span> <span class="spec-val">Argon2id (RFC 9106)</span></li>
+                            <li><span class="spec-name">Transport Layer:</span> <span class="spec-val">WebSockets (RFC 6455)</span></li>
+                        </ul>
+                    </div>
+
+                    <!-- Live Wire Payload Inspector -->
+                    <div class="sec-card">
+                        <div class="sec-card-title">📡 Live Wire Payload Inspector</div>
+                        <p class="academic-explainer" style="margin-bottom: 8px;">
+                            Raw WebSocket envelope. It contains ciphertext, recipient, counters, and public ratchet metadata; the message text is not sent to the backend.
+                        </p>
+                        <pre id="wire-payload-code" class="wire-code-block">// Select contact and send a message to inspect wire packet.</pre>
+                    </div>
+
+                    <!-- Academic Viva Reference -->
+                    <div class="sec-card">
+                        <div class="sec-card-title">🎓 Viva / Examination Reference</div>
+                        <div class="academic-explainer">
+                            <p style="margin-bottom: 6px;"><strong>1. Forward Secrecy &amp; Ratchet:</strong> A one-way symmetric KDF chain ratchets message keys on each send, immediately erasing past message keys from memory. Conversational turns perform asymmetric DH ratcheting to refresh root key entropy.</p>
+                            <p style="margin-bottom: 6px;"><strong>2. Authenticated Encryption:</strong> AES-256-GCM computes a 128-bit authentication tag over the ciphertext. If any byte is altered in flight, the tag fails verification and the message is rejected.</p>
+                            <p><strong>3. Zero-Knowledge Relay:</strong> The backend WebSocket server authenticates users via JWT and routes encrypted envelopes without possessing the plaintext or private keys.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Client-Side Scripts -->
+    <script src="/static/js/crypto.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/chat.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

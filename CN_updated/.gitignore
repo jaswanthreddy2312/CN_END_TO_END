@@ -1,0 +1,25 @@
+# Python environments and generated files
+venv/
+.venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Local application data and secrets
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+
+# JavaScript dependencies and test output
+node_modules/
+coverage/
